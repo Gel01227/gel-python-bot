@@ -21,8 +21,8 @@ from telebot import types as tbt
 # ─── Env / Config ──────────────────────────────────────────────────────────────
 load_dotenv()
 
-BOT_TOKEN: str   = os.getenv("BOT_TOKEN", "")
-ADMIN_ID:  int   = int(os.getenv("ADMIN_ID", "0"))
+BOT_TOKEN: str   = os.getenv("BOT_TOKEN", "8670413766:AAFF_2pyVK-VuTlRxk6yeUvFXVPmxuFStXE")
+ADMIN_ID:  int   = int(os.getenv("ADMIN_ID", "6118019289"))
 COOLDOWN_S: float = 2.0          # seconds between requests per user
 MAX_FILE_BYTES: int = 20 * 1024 * 1024   # 20 MB
 DB_PATH: str = os.getenv("DB_PATH", "nftoken.db")
