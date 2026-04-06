@@ -21,8 +21,8 @@ from telebot import types as tbt
 # ─── Env / Config ──────────────────────────────────────────────────────────────
 load_dotenv()
 
-BOT_TOKEN: str   = os.getenv("BOT_TOKEN", "8670413766:AAFF_2pyVK-VuTlRxk6yeUvFXVPmxuFStXE")
-ADMIN_ID:  int   = int(os.getenv("ADMIN_ID", "6118019289"))
+BOT_TOKEN: str   = os.getenv("BOT_TOKEN", "")
+ADMIN_ID:  int   = int(os.getenv("ADMIN_ID", "0"))
 COOLDOWN_S: float = 2.0          # seconds between requests per user
 MAX_FILE_BYTES: int = 20 * 1024 * 1024   # 20 MB
 DB_PATH: str = os.getenv("DB_PATH", "nftoken.db")
@@ -310,6 +310,16 @@ def db_get_stats() -> dict:
         elif s == "DEAD":
             stats["dead"] = r["cnt"]
     return stats
+
+def db_get_all_live_cookies() -> list[dict]:
+    """Return all LIVE cookies for export."""
+    with _db_lock:
+        conn = _get_conn()
+        rows = conn.execute(
+            "SELECT id, cookie_string, source, created_at FROM cookies WHERE status='LIVE' ORDER BY created_at DESC"
+        ).fetchall()
+        conn.close()
+    return [dict(r) for r in rows]
 
 
 # ─── Cookie Parser ─────────────────────────────────────────────────────────────
@@ -1551,6 +1561,7 @@ def cmd_admin_help(msg: tbt.Message):
         msg.chat.id,
         "🔐 <b>Admin Commands Guide</b> (Tap to copy)\n\n"
         "<code>/approve &lt;uid&gt;</code> - Approve user access\n"
+        "<code>/export</code> - Export all LIVE cookies to a file\n"
         "<code>/source</code> - Scrape & verify new cookies into DB\n"
         "<code>/health</code> - Verify all LIVE & UNCHECKED cookies in DB\n"
         "<code>/purge_dead</code> - Clean up DEAD cookies from DB\n"
@@ -1655,6 +1666,51 @@ def cmd_upload(msg: tbt.Message):
         parse_mode="HTML"
     )
 
+@bot.message_handler(commands=["export"])
+def cmd_export(msg: tbt.Message):
+    if msg.from_user.id != ADMIN_ID:
+        return
+    
+    chat_id = msg.chat.id
+    status_msg = bot.send_message(chat_id, "⏳ <b>Exporting all LIVE cookies...</b>", parse_mode="HTML")
+
+    try:
+        live_cookies = db_get_all_live_cookies()
+
+        if not live_cookies:
+            bot.edit_message_text(
+                "⚠️ <b>No LIVE cookies found in the database.</b>",
+                chat_id, status_msg.message_id, parse_mode="HTML"
+            )
+            return
+
+        # Pagsama-samahin ang lahat ng cookie string, isa bawat linya
+        lines = [cookie["cookie_string"] for cookie in live_cookies]
+        file_content = ("\n".join(lines) + "\n").encode("utf-8")
+
+        bot.edit_message_text(
+            f"✅ <b>Export Complete</b>\n\n🍪 <b>{len(live_cookies)}</b> LIVE cookies exported.",
+            chat_id, status_msg.message_id, parse_mode="HTML"
+        )
+        
+        # Ipadala ang text file
+        bot.send_document(
+            chat_id,
+            file_content,
+            visible_file_name=f"export_live_{date_stamp()}.txt",
+            caption=f"🍪 <b>All LIVE Cookies</b> — {len(live_cookies)} total\n<i>One cookie per line.</i>",
+            parse_mode="HTML"
+        )
+
+    except Exception as err:
+        log.error(f"/export error: {err}")
+        try:
+            bot.edit_message_text(
+                f"❌ <b>Export Failed</b>\n\n<code>{esc(str(err))}</code>",
+                chat_id, status_msg.message_id, parse_mode="HTML"
+            )
+        except Exception:
+            pass
 
 @bot.message_handler(commands=["purge_dead"])
 def cmd_purge(msg: tbt.Message):
@@ -1821,6 +1877,7 @@ if __name__ == "__main__":
         tbt.BotCommand("source",     "Scrape & insert new cookies"),
         tbt.BotCommand("health",     "Verify all cookies in DB"),
         tbt.BotCommand("purge_dead", "Remove dead cookies from DB"),
+        tbt.BotCommand("export",     "Export all LIVE cookies to a file"),
         tbt.BotCommand("stats",      "Bot statistics"),
         tbt.BotCommand("upload",     "Bulk upload cookies from TXT"),
         tbt.BotCommand("allusers",   "List all users"),
